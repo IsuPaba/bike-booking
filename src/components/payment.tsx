@@ -1,3 +1,4 @@
+import { Banknote } from "lucide-react";
 import type { PaymentMethod } from "@/lib/types";
 
 /** Look-alike payment marks for the simulated checkout (prototype only, no real provider). */
@@ -14,24 +15,11 @@ export function PaymentLogo({ method, large = false }: { method: PaymentMethod; 
       </span>
     );
   }
-  if (method === "paypal") {
-    return (
-      <span className={`inline-flex ${h} items-center rounded-md bg-[#FFC439] px-3 font-extrabold italic`} aria-hidden>
-        <span className="text-[#003087]">Pay</span><span className="text-[#009CDE]">Pal</span>
-      </span>
-    );
+  if (method === "google_pay") {
+    return <span className={`inline-flex ${h} items-center gap-1 rounded-md bg-black px-3 font-semibold text-white`} aria-hidden><b className="text-[#4285F4]">G</b> Pay</span>;
   }
-  return (
-    <span className={`inline-flex ${h} items-center gap-1 rounded-md bg-black px-3 font-semibold text-white`} aria-hidden>
-      <span className="font-bold">
-        <span className="text-[#4285F4]">G</span>
-      </span>
-      Pay
-    </span>
-  );
+  return <span className={`inline-flex ${h} items-center gap-1.5 rounded-md bg-status-available-bg px-3 font-semibold text-status-available`} aria-hidden><Banknote size={16} /> Cash</span>;
 }
-
-export const METHOD_LABEL: Record<PaymentMethod, string> = { card: "Card", paypal: "PayPal", google_pay: "Google Pay" };
 
 /** Luhn checksum for card numbers. */
 export function luhnValid(digits: string): boolean {

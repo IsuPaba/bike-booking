@@ -2,18 +2,18 @@ import { ArrowDown, ArrowUp, Pencil, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Alert, Button, Dialog, EmptyState, Field, Skeleton } from "@/components/ui";
 import { useData } from "@/hooks/useData";
-import { ApiError, listBikes, listCategories, moveCategory, saveCategory } from "@/lib/api";
-import type { BikeCategory } from "@/lib/types";
+import { ApiError, listCategories, listListings, moveCategory, saveCategory } from "@/lib/api";
+import type { Category } from "@/lib/types";
 import { AdminTitle } from "./AdminLayout";
 
 const slugify = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export default function CategoriesAdmin() {
   const { data, loading } = useData(async () => {
-    const [categories, bikes] = await Promise.all([listCategories(), listBikes({ includeInactive: true })]);
+    const [categories, bikes] = await Promise.all([listCategories(), listListings({ includeInactive: true })]);
     return { categories, bikes };
   });
-  const [editing, setEditing] = useState<Partial<BikeCategory> | null>(null);
+  const [editing, setEditing] = useState<Partial<Category> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -42,7 +42,7 @@ export default function CategoriesAdmin() {
       {loading || !data ? (
         <div className="space-y-2">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-20" />)}</div>
       ) : data.categories.length === 0 ? (
-        <EmptyState title="No categories yet">Add your first category to group your bikes.</EmptyState>
+        <EmptyState title="No categories yet">Add your first category to group your bicycles.</EmptyState>
       ) : (
         <ol className="card max-w-3xl divide-y divide-line">
           {data.categories.map((c, i) => (
@@ -50,7 +50,7 @@ export default function CategoriesAdmin() {
               <span className="w-6 text-center font-bold text-ink-soft">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">{c.name}</p>
-                <p className="truncate text-sm text-ink-soft">{c.description || "No description"} · {data.bikes.filter((b) => b.category_id === c.id).length} bikes</p>
+                <p className="truncate text-sm text-ink-soft">{c.description || "No description"} · {data.bikes.filter((b) => b.category_id === c.id).length} bicycles</p>
               </div>
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm" onClick={() => moveCategory(c.id, -1)} disabled={i === 0} aria-label={`Move ${c.name} up`}><ArrowUp size={16} /></Button>

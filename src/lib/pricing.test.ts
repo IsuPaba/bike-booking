@@ -1,136 +1,66 @@
 import { describe, expect, it } from "vitest";
-import { basePrice, quote, rentalHours, selectBestPromotion, validatePromoCode } from "./pricing";
-import type { Promotion } from "./types";
+import { bestDiscountForDay, commissionFor, daysCharged, priceLine, quoteCart } from "./pricing";
+import type { Discount } from "./types";
 
-const cruiser = { hourly_rate: 3, daily_rate: 10, weekly_rate: 55 };
-const start = "2026-12-01T05:00:00.000Z"; // 1 Dec 09:00 Seychelles
-const plusHours = (h: number) => new Date(new Date(start).getTime() + h * 3600_000).toISOString();
+const city = { id: "l1", category_id: "c-women", daily_price: 12, name: "Women's city bike" };
+const ebike = { id: "l2", category_id: "c-electric", daily_price: 35, name: "E-bike" };
 
-const promo = (p: Partial<Promotion>): Promotion => ({
-  id: p.id ?? "p",
-  name: "Promo",
-  description: "",
-  discount_type: "percentage",
-  discount_value: 10,
-  starts_at: "2026-11-01",
-  ends_at: "2027-01-15",
-  applies_to: "all_bikes",
-  promo_code: null,
-  min_rental_hours: null,
-  is_active: true,
-  bike_ids: [],
-  ...p,
+const discount = (d: Partial<Discount>): Discount => ({
+  id: d.id ?? "d", name: "Festive", discount_type: "percentage", value: 15, starts_on: "2026-12-01", ends_on: "2026-12-31",
+  scope: "all", category_ids: [], listing_ids: [], is_active: true, ...d,
 });
 
-describe("rentalHours", () => {
-  it("rounds up to the next full hour", () => {
-    expect(rentalHours(start, new Date(new Date(start).getTime() + 61 * 60_000).toISOString())).toBe(2);
-  });
-  it("has a minimum of 1 hour", () => {
-    expect(rentalHours(start, new Date(new Date(start).getTime() + 10 * 60_000).toISOString())).toBe(1);
-  });
+describe("daysCharged (BRL-001: per calendar day)", () => {
+  it("charges a same-day rental as 1 day", () => expect(daysCharged("2026-12-05", "2026-12-05")).toBe(1));
+  it("charges 1 night as 2 days", () => expect(daysCharged("2026-12-05", "2026-12-06")).toBe(2));
+  it("charges a 7-day rental as 7 days", () => expect(daysCharged("2026-12-01", "2026-12-07")).toBe(7));
 });
 
-describe("basePrice", () => {
-  it("charges by the hour under the daily cap", () => {
-    expect(basePrice(3, cruiser)).toEqual({ amount: 9, text: "3 hours × $3" });
+describe("discounts", () => {
+  it("only discounts days inside the date range (BRL-005)", () => {
+    const q = priceLine(city, 1, "2026-11-29", "2026-12-02", [discount({})]); // 4 days, 2 in December
+    expect(q.gross).toBe(48);
+    expect(q.discount_amount).toBe(3.6); // 15% of 12 × 2 days
+    expect(q.line_total).toBe(44.4);
   });
-  it("caps hours at the daily rate", () => {
-    const p = basePrice(9, cruiser);
-    expect(p.amount).toBe(10);
-    expect(p.text).toBe("9 hours (daily cap $10)");
+
+  it("picks the single best discount per bike per day, never stacking (BRL-004)", () => {
+    const pct = discount({ id: "a", name: "Festive", value: 15 });
+    const fixed = discount({ id: "b", name: "Electric", discount_type: "fixed_per_day", value: 3, scope: "categories", category_ids: ["c-electric"] });
+    expect(bestDiscountForDay(ebike, "2026-12-10", [pct, fixed])?.discount.id).toBe("a"); // 5.25 > 3
+    expect(bestDiscountForDay(city, "2026-12-10", [fixed])).toBeNull(); // wrong category
+    const q = priceLine(ebike, 1, "2026-12-10", "2026-12-10", [pct, fixed]);
+    expect(q.discount_amount).toBe(5.25);
   });
-  it("rolls 24 hours over into a day", () => {
-    expect(basePrice(24, cruiser).amount).toBe(10);
-    expect(basePrice(26, cruiser)).toEqual({ amount: 16, text: "1 day × $10 + 2 hours × $3" });
+
+  it("caps a fixed discount at the daily price", () => {
+    const big = discount({ discount_type: "fixed_per_day", value: 50 });
+    expect(priceLine(city, 1, "2026-12-10", "2026-12-10", [big]).line_total).toBe(0);
   });
-  it("caps leftover hours at one daily rate", () => {
-    expect(basePrice(2 * 24 + 20, cruiser).amount).toBe(30);
-  });
-  it("caps several days at the weekly rate", () => {
-    const p = basePrice(6 * 24 + 5, cruiser); // 6 days × 10 + 5h cap 10 = 70 > 55
-    expect(p.amount).toBe(55);
-    expect(p.text).toContain("weekly cap $55");
-  });
-  it("rolls days over into weeks", () => {
-    const p = basePrice(17 * 24, cruiser);
-    expect(p).toEqual({ amount: 140, text: "2 weeks × $55 + 3 days × $10" });
-  });
-  it("caps the leftover after full weeks at one weekly rate", () => {
-    expect(basePrice(168 + 6 * 24 + 23, cruiser).amount).toBe(110);
+
+  it("produces the readable breakdown", () => {
+    const q = priceLine(city, 2, "2026-11-30", "2026-12-02", [discount({})]);
+    expect(q.breakdown).toBe("2 × Women's city bike × 3 days × $12 = $72 · Festive −15% on 2 days = −$7.20");
   });
 });
 
-describe("promotions", () => {
-  const festive = promo({ id: "festive", name: "Festive Season", discount_value: 15 });
-  const welcome = promo({ id: "welcome", name: "Welcome", discount_type: "fixed_amount", discount_value: 10, promo_code: "WELCOME10", min_rental_hours: 24 });
-  const expired = promo({ id: "old", name: "Old", discount_value: 50, starts_at: "2026-01-01", ends_at: "2026-02-01" });
-
-  it("picks the single best eligible promotion and never stacks", () => {
-    const ctx = { bikeId: "b1", startIso: start, hours: 17 * 24 };
-    const best = selectBestPromotion([festive, welcome, expired], ctx, 140, welcome);
-    expect(best.promotion?.id).toBe("festive"); // 15% of 140 = 21 > 10
-    expect(best.discount).toBe(21);
+describe("quoteCart", () => {
+  it("adds multiple bikes and the delivery fee", () => {
+    const q = quoteCart([{ listing: city, quantity: 2 }, { listing: ebike, quantity: 1 }], "2026-11-10", "2026-11-11", [], "delivery", 5);
+    expect(q.subtotal).toBe(2 * 2 * 12 + 2 * 35);
+    expect(q.delivery_fee).toBe(5);
+    expect(q.total).toBe(123);
+    expect(q.bicycles).toBe(3);
   });
 
-  it("prefers the code when it beats the automatic promotion", () => {
-    const ctx = { bikeId: "b1", startIso: start, hours: 24 };
-    const best = selectBestPromotion([festive, welcome], ctx, 10, welcome);
-    expect(best.promotion?.id).toBe("welcome"); // $10 > 15% of $10
-    expect(best.discount).toBe(10);
-  });
-
-  it("validates promo codes case-insensitively", () => {
-    const ctx = { bikeId: "b1", startIso: start, hours: 48 };
-    expect(validatePromoCode("welcome10", [welcome], ctx).ok).toBe(true);
-    expect(validatePromoCode("NOPE", [welcome], ctx).ok).toBe(false);
-  });
-
-  it("rejects codes below the minimum rental hours", () => {
-    const r = validatePromoCode("WELCOME10", [welcome], { bikeId: "b1", startIso: start, hours: 5 });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toContain("24 hours");
-  });
-
-  it("rejects promotions outside their date range", () => {
-    const r = validatePromoCode("LATE", [promo({ promo_code: "LATE", starts_at: "2027-03-01", ends_at: "2027-03-31" })], {
-      bikeId: "b1", startIso: start, hours: 5,
-    });
-    expect(r.ok).toBe(false);
-  });
-
-  it("respects selected-bike promotions", () => {
-    const only = promo({ applies_to: "selected_bikes", bike_ids: ["b2"] });
-    expect(selectBestPromotion([only], { bikeId: "b1", startIso: start, hours: 5 }, 10).promotion).toBeNull();
-    expect(selectBestPromotion([only], { bikeId: "b2", startIso: start, hours: 5 }, 10).promotion).not.toBeNull();
+  it("charges no delivery fee for self-pickup", () => {
+    expect(quoteCart([{ listing: city, quantity: 1 }], "2026-11-10", "2026-11-10", [], "pickup", 5).total).toBe(12);
   });
 });
 
-describe("quote", () => {
-  it("returns the readable breakdown from the brief", () => {
-    const q = quote({
-      rates: cruiser, bikeId: "b1", startIso: start, endIso: plusHours(17 * 24), quantity: 1,
-      promotions: [promo({ name: "Festive Season", discount_value: 15 })],
-    });
-    expect(q.summary).toBe("2 weeks × $55 + 3 days × $10 = $140 · Festive Season −15% = $119");
-    expect(q.total).toBe(119);
-  });
-
-  it("multiplies by quantity", () => {
-    const q = quote({ rates: cruiser, bikeId: "b1", startIso: start, endIso: plusHours(3), quantity: 2, promotions: [] });
-    expect(q.subtotal).toBe(18);
-    expect(q.summary).toBe("(3 hours × $3) × 2 bikes = $18");
-  });
-
-  it("explains when an entered code is beaten by a better offer", () => {
-    const q = quote({
-      rates: cruiser, bikeId: "b1", startIso: start, endIso: plusHours(17 * 24), quantity: 1, promoCode: "welcome10",
-      promotions: [
-        promo({ id: "f", name: "Festive Season", discount_value: 15 }),
-        promo({ id: "w", discount_type: "fixed_amount", discount_value: 10, promo_code: "WELCOME10", min_rental_hours: 24 }),
-      ],
-    });
-    expect(q.codeResult?.status).toBe("not_best");
-    expect(q.discount).toBe(21);
+describe("commissionFor", () => {
+  it("supports percentage and fixed per bike-day", () => {
+    expect(commissionFor("percentage", 15, 36, 3)).toBe(5.4);
+    expect(commissionFor("fixed_per_bike_day", 2, 36, 3)).toBe(6);
   });
 });

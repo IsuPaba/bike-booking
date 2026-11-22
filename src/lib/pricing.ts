@@ -1,235 +1,178 @@
 /**
- * Pricing rules — pure, framework-free functions (reusable by the future mobile app).
+ * Pricing rules — pure, framework-free (reused by the future mobile app and by create_booking).
  *
- * - Duration rounds UP to the next full hour; minimum 1 hour.
- * - Never overcharge: hours are capped at the daily rate, days at the weekly rate.
- * - 7+ days: weeks × weekly rate + leftover priced the same way (leftover capped at one weekly rate).
- * - Only the single best eligible promotion applies. Promotions never stack.
+ * BRL-001 Price is per CALENDAR DAY: days charged = (end date − start date) + 1.
+ * BRL-005 A seasonal discount applies to each rental day inside its date range.
+ * BRL-004 Only the single best discount applies per bicycle per day; never stacked.
+ * Booking total = sum of bicycle lines + delivery fee (if delivery).
  */
 import { formatMoneyCompact as $, round2 } from "./money";
-import { HOUR_MS, formatDate, scDate } from "./time";
-import type { Promotion } from "./types";
-
-export interface Rates {
-  hourly_rate: number;
-  daily_rate: number;
-  weekly_rate: number;
-}
-
-const HOURS_PER_DAY = 24;
-const HOURS_PER_WEEK = 7 * HOURS_PER_DAY;
+import { addDays, formatDate } from "./time";
+import type { CommissionType, DateStr, Discount, Fulfilment, Listing } from "./types";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Billable hours between two instants: rounded up, minimum 1. */
-export function rentalHours(startIso: string, endIso: string): number {
-  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
-  return Math.max(1, Math.ceil(ms / HOUR_MS));
+/** Inclusive calendar days between two dates. Same-day rental = 1 day. */
+export function daysCharged(start: DateStr, end: DateStr): number {
+  const ms = new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime();
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
 }
 
-export interface PricePart {
-  amount: number;
-  text: string;
+/** Every calendar date of a rental, first to last. */
+export function rentalDates(start: DateStr, end: DateStr): DateStr[] {
+  return Array.from({ length: daysCharged(start, end) }, (_, i) => addDays(start, i));
 }
 
-/** Price for less than one week (0–167 hours) for a single bike, capped at the weekly rate. */
-function priceUnderWeek(hours: number, r: Rates): PricePart {
-  if (hours <= 0) return { amount: 0, text: "" };
-  const days = Math.floor(hours / HOURS_PER_DAY);
-  const leftHours = hours % HOURS_PER_DAY;
-  const parts: PricePart[] = [];
+type ListingLike = Pick<Listing, "id" | "category_id" | "daily_price" | "name">;
 
-  if (days > 0) parts.push({ amount: days * r.daily_rate, text: `${plural(days, "day")} × ${$(r.daily_rate)}` });
-  if (leftHours > 0) {
-    const byHour = leftHours * r.hourly_rate;
-    parts.push(
-      byHour > r.daily_rate
-        ? { amount: r.daily_rate, text: `${plural(leftHours, "hour")} (daily cap ${$(r.daily_rate)})` }
-        : { amount: byHour, text: `${plural(leftHours, "hour")} × ${$(r.hourly_rate)}` },
-    );
-  }
-
-  const amount = parts.reduce((s, p) => s + p.amount, 0);
-  if (amount > r.weekly_rate) {
-    const span = [days && plural(days, "day"), leftHours && plural(leftHours, "hour")].filter(Boolean).join(" ");
-    return { amount: r.weekly_rate, text: `${span} (weekly cap ${$(r.weekly_rate)})` };
-  }
-  return { amount: round2(amount), text: parts.map((p) => p.text).join(" + ") };
+export function discountApplies(d: Discount, listing: ListingLike, day: DateStr): boolean {
+  if (!d.is_active || day < d.starts_on || day > d.ends_on) return false;
+  if (d.scope === "categories") return d.category_ids.includes(listing.category_id);
+  if (d.scope === "listings") return d.listing_ids.includes(listing.id);
+  return true;
 }
 
-/** Base price for one bike for a number of billable hours, with a readable explanation. */
-export function basePrice(hours: number, r: Rates): PricePart {
-  const h = Math.max(1, Math.ceil(hours));
-  const weeks = Math.floor(h / HOURS_PER_WEEK);
-  const rest = priceUnderWeek(h % HOURS_PER_WEEK, r);
-  if (weeks === 0) return rest;
-  const weekPart = { amount: weeks * r.weekly_rate, text: `${plural(weeks, "week")} × ${$(r.weekly_rate)}` };
-  return {
-    amount: round2(weekPart.amount + rest.amount),
-    text: [weekPart.text, rest.text].filter(Boolean).join(" + "),
-  };
+/** Discount for ONE bicycle on ONE day, capped at the daily price. */
+export function discountAmountPerDay(d: Discount, dailyPrice: number): number {
+  const raw = d.discount_type === "percentage" ? (dailyPrice * d.value) / 100 : d.value;
+  return round2(Math.min(Math.max(raw, 0), dailyPrice));
 }
 
-// ---------------------------------------------------------------- promotions
-
-export interface PromoContext {
-  bikeId: string;
-  startIso: string;
-  hours: number;
-}
-
-export type Eligibility = { ok: true } | { ok: false; reason: string };
-
-export function promotionEligibility(p: Promotion, ctx: PromoContext): Eligibility {
-  if (!p.is_active) return { ok: false, reason: "This offer is no longer available." };
-  const startDate = scDate(ctx.startIso);
-  if (startDate < p.starts_at) return { ok: false, reason: `This offer is valid for rentals starting from ${formatDate(p.starts_at)}.` };
-  if (startDate > p.ends_at) return { ok: false, reason: `This offer ended on ${formatDate(p.ends_at)}.` };
-  if (p.applies_to === "selected_bikes" && !p.bike_ids.includes(ctx.bikeId))
-    return { ok: false, reason: "This offer isn't valid for this bike." };
-  if (p.min_rental_hours && ctx.hours < p.min_rental_hours)
-    return { ok: false, reason: `This offer is for rentals of ${plural(p.min_rental_hours, "hour")} or more.` };
-  return { ok: true };
-}
-
-export function discountFor(p: Promotion, subtotal: number): number {
-  const raw = p.discount_type === "percentage" ? (subtotal * p.discount_value) / 100 : p.discount_value;
-  return round2(Math.min(Math.max(raw, 0), subtotal));
-}
-
-/** "−15%" or "−$10" */
-export function discountLabel(p: Pick<Promotion, "discount_type" | "discount_value">): string {
-  return p.discount_type === "percentage" ? `−${p.discount_value}%` : `−${$(p.discount_value)}`;
-}
-
-export const normaliseCode = (code: string) => code.trim().toUpperCase();
-
-export type CodeCheck = { ok: true; promotion: Promotion } | { ok: false; reason: string };
-
-export function validatePromoCode(code: string, promotions: Promotion[], ctx: PromoContext): CodeCheck {
-  const wanted = normaliseCode(code);
-  if (!wanted) return { ok: false, reason: "Enter a promo code." };
-  const promo = promotions.find((p) => p.promo_code && normaliseCode(p.promo_code) === wanted);
-  if (!promo) return { ok: false, reason: "We don't recognise that code. Check the spelling and try again." };
-  const e = promotionEligibility(promo, ctx);
-  return e.ok ? { ok: true, promotion: promo } : { ok: false, reason: e.reason };
-}
-
-export interface BestPromotion {
-  promotion: Promotion | null;
-  discount: number;
-}
-
-/** The single best eligible promotion: automatic ones plus the entered code (if valid). Never stacks. */
-export function selectBestPromotion(
-  promotions: Promotion[],
-  ctx: PromoContext,
-  subtotal: number,
-  validCode: Promotion | null = null,
-): BestPromotion {
-  const candidates = promotions.filter((p) => p.promo_code === null && promotionEligibility(p, ctx).ok);
-  if (validCode) candidates.push(validCode);
-  let best: BestPromotion = { promotion: null, discount: 0 };
-  for (const p of candidates) {
-    const d = discountFor(p, subtotal);
-    if (d > best.discount) best = { promotion: p, discount: d };
+/** BRL-004: the single best discount for one bicycle on one day (or null). */
+export function bestDiscountForDay(listing: ListingLike, day: DateStr, discounts: Discount[]): { discount: Discount; amount: number } | null {
+  let best: { discount: Discount; amount: number } | null = null;
+  for (const d of discounts) {
+    if (!discountApplies(d, listing, day)) continue;
+    const amount = discountAmountPerDay(d, listing.daily_price);
+    if (!best || amount > best.amount) best = { discount: d, amount };
   }
   return best;
 }
 
-// ---------------------------------------------------------------- full quote
+/** "−15%" or "−$3/day" */
+export function discountLabel(d: Pick<Discount, "discount_type" | "value">): string {
+  return d.discount_type === "percentage" ? `−${d.value}%` : `−${$(d.value)}/day`;
+}
 
-export interface QuoteInput {
-  rates: Rates;
-  bikeId: string;
-  startIso: string;
-  endIso: string;
+/** Price after the best discount on a given day — used for the crossed-out price on cards (FR-011). */
+export function priceOnDay(listing: ListingLike, day: DateStr, discounts: Discount[]) {
+  const best = bestDiscountForDay(listing, day, discounts);
+  return { price: round2(listing.daily_price - (best?.amount ?? 0)), original: listing.daily_price, discount: best?.discount ?? null };
+}
+
+export interface LineQuote {
+  listing_id: string;
   quantity: number;
-  promotions: Promotion[];
-  promoCode?: string | null;
+  days: number;
+  unit_price: number;
+  /** Discount for one bicycle over the whole rental */
+  discount_per_bike: number;
+  /** Discount for all bicycles on this line */
+  discount_amount: number;
+  gross: number;
+  line_total: number;
+  /** One bicycle's share, stored on each booking_item */
+  per_bike_total: number;
+  breakdown: string;
 }
 
-export interface CodeResult {
-  code: string;
-  status: "applied" | "not_best" | "invalid";
-  message: string;
-}
-
-export interface Quote {
-  hours: number;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-  discount: number;
-  total: number;
-  promotion: Promotion | null;
-  codeResult: CodeResult | null;
-  /** The base calculation, e.g. "2 weeks × $55 + 3 days × $10" */
-  baseText: string;
-  /** Full readable breakdown, e.g. "2 weeks × $55 + 3 days × $10 = $140 · Festive Season −15% = $119" */
-  summary: string;
-}
-
-export function quote(input: QuoteInput): Quote {
-  const hours = rentalHours(input.startIso, input.endIso);
-  const quantity = Math.max(1, Math.floor(input.quantity));
-  const unit = basePrice(hours, input.rates);
-  const subtotal = round2(unit.amount * quantity);
-  const ctx: PromoContext = { bikeId: input.bikeId, startIso: input.startIso, hours };
-
-  let codeCheck: CodeCheck | null = null;
-  if (input.promoCode && input.promoCode.trim()) codeCheck = validatePromoCode(input.promoCode, input.promotions, ctx);
-  const validCode = codeCheck?.ok ? codeCheck.promotion : null;
-  const best = selectBestPromotion(input.promotions, ctx, subtotal, validCode);
-
-  let codeResult: CodeResult | null = null;
-  if (input.promoCode && codeCheck) {
-    const code = normaliseCode(input.promoCode);
-    if (!codeCheck.ok) codeResult = { code, status: "invalid", message: codeCheck.reason };
-    else if (best.promotion?.id === codeCheck.promotion.id)
-      codeResult = { code, status: "applied", message: `${code} applied: ${discountLabel(codeCheck.promotion)}.` };
-    else
-      codeResult = {
-        code,
-        status: "not_best",
-        message: `${best.promotion?.name ?? "Another offer"} already gives you a better deal, so we applied that instead. Offers can't be combined.`,
-      };
+/** Price one cart line: quantity × days × daily price, minus the best discount on each day. */
+export function priceLine(listing: ListingLike, quantity: number, start: DateStr, end: DateStr, discounts: Discount[]): LineQuote {
+  const qty = Math.max(1, Math.floor(quantity));
+  const dates = rentalDates(start, end);
+  const groups = new Map<string, { discount: Discount; days: number; amount: number }>();
+  let perBike = 0;
+  for (const day of dates) {
+    const best = bestDiscountForDay(listing, day, discounts);
+    if (!best) continue;
+    perBike += best.amount;
+    const g = groups.get(best.discount.id) ?? { discount: best.discount, days: 0, amount: 0 };
+    g.days += 1;
+    g.amount += best.amount;
+    groups.set(best.discount.id, g);
   }
-
-  const baseText = quantity > 1 ? `(${unit.text}) × ${quantity} bikes` : unit.text;
-  let summary = `${baseText} = ${$(subtotal)}`;
-  const total = round2(subtotal - best.discount);
-  if (best.promotion) summary += ` · ${best.promotion.name} ${discountLabel(best.promotion)} = ${$(total)}`;
-
+  const gross = round2(qty * dates.length * listing.daily_price);
+  const discountAmount = round2(perBike * qty);
+  let breakdown = `${qty} × ${listing.name} × ${plural(dates.length, "day")} × ${$(listing.daily_price)} = ${$(gross)}`;
+  for (const g of groups.values()) {
+    breakdown += ` · ${g.discount.name} ${discountLabel(g.discount)} on ${plural(g.days, "day")} = −${$(round2(g.amount * qty))}`;
+  }
   return {
-    hours,
-    quantity,
-    unitPrice: unit.amount,
-    subtotal,
-    discount: best.discount,
-    total,
-    promotion: best.promotion,
-    codeResult,
-    baseText,
-    summary,
+    listing_id: listing.id,
+    quantity: qty,
+    days: dates.length,
+    unit_price: listing.daily_price,
+    discount_per_bike: round2(perBike),
+    discount_amount: discountAmount,
+    gross,
+    line_total: round2(gross - discountAmount),
+    per_bike_total: round2(dates.length * listing.daily_price - perBike),
+    breakdown,
   };
 }
 
-/** Plain-English summary, e.g. "15% off all bikes, 1 Dec 2026 – 15 Jan 2027, applied automatically". */
-export function describePromotion(
-  p: Pick<Promotion, "discount_type" | "discount_value" | "applies_to" | "bike_ids" | "starts_at" | "ends_at" | "promo_code" | "min_rental_hours">,
-  bikeNames: Record<string, string> = {},
-): string {
-  const amount = p.discount_type === "percentage" ? `${p.discount_value || 0}% off` : `${$(p.discount_value || 0)} off`;
-  const names = p.bike_ids.map((id) => bikeNames[id]).filter(Boolean);
-  const target = p.applies_to === "all_bikes" ? "all bikes" : names.length ? names.join(", ") : "selected bikes (none chosen yet)";
-  const dates = p.starts_at && p.ends_at ? `, ${formatDate(p.starts_at)} – ${formatDate(p.ends_at)}` : "";
-  const min = p.min_rental_hours ? `, for rentals of ${plural(p.min_rental_hours, "hour")} or more` : "";
-  const how = p.promo_code ? `, with code ${normaliseCode(p.promo_code)}` : ", applied automatically";
-  return `${amount} ${target}${dates}${min}${how}`;
+export interface CartLineInput {
+  listing: ListingLike;
+  quantity: number;
 }
 
-/** Lowest daily rate across bikes — used for "Starting from $X / day". */
-export function lowestDailyRate(bikes: Rates[]): number | null {
-  return bikes.length ? Math.min(...bikes.map((b) => b.daily_rate)) : null;
+export interface CartQuote {
+  days: number;
+  lines: LineQuote[];
+  subtotal: number;
+  discount_total: number;
+  delivery_fee: number;
+  total: number;
+  bicycles: number;
+}
+
+export function quoteCart(
+  lines: CartLineInput[],
+  start: DateStr,
+  end: DateStr,
+  discounts: Discount[],
+  fulfilment: Fulfilment | null = null,
+  deliveryFee = 0,
+): CartQuote {
+  const quoted = lines.map((l) => priceLine(l.listing, l.quantity, start, end, discounts));
+  const subtotal = round2(quoted.reduce((s, l) => s + l.gross, 0));
+  const discount_total = round2(quoted.reduce((s, l) => s + l.discount_amount, 0));
+  const delivery_fee = fulfilment === "delivery" ? round2(deliveryFee) : 0;
+  return {
+    days: daysCharged(start, end),
+    lines: quoted,
+    subtotal,
+    discount_total,
+    delivery_fee,
+    total: round2(subtotal - discount_total + delivery_fee),
+    bicycles: quoted.reduce((s, l) => s + l.quantity, 0),
+  };
+}
+
+/** Commission on one booked bicycle (BRL-012 snapshot values). */
+export function commissionFor(type: CommissionType, value: number, bikeRentalAmount: number, days: number): number {
+  return round2(type === "percentage" ? (bikeRentalAmount * value) / 100 : value * days);
+}
+
+export function commissionLabel(type: CommissionType, value: number): string {
+  return type === "percentage" ? `${value}%` : `${$(value)} per bike-day`;
+}
+
+/** Plain-English summary, e.g. "15% off Electric bikes, 1 Dec 2026 – 15 Jan 2027". */
+export function describeDiscount(
+  d: Pick<Discount, "discount_type" | "value" | "scope" | "category_ids" | "listing_ids" | "starts_on" | "ends_on">,
+  names: { categories: Record<string, string>; listings: Record<string, string> },
+): string {
+  const amount = d.discount_type === "percentage" ? `${d.value || 0}% off` : `${$(d.value || 0)} off per bike per day`;
+  const pick = (ids: string[], map: Record<string, string>) => ids.map((id) => map[id]).filter(Boolean).join(", ");
+  const target =
+    d.scope === "all" ? "all bikes"
+    : d.scope === "categories" ? `${pick(d.category_ids, names.categories) || "chosen categories (none yet)"} bikes`
+    : pick(d.listing_ids, names.listings) || "chosen bicycles (none yet)";
+  const dates = d.starts_on && d.ends_on ? `, ${formatDate(d.starts_on)} – ${formatDate(d.ends_on)}` : "";
+  return `${amount} ${target}${dates}`;
+}
+
+export function lowestDailyPrice(listings: Pick<Listing, "daily_price">[]): number | null {
+  return listings.length ? Math.min(...listings.map((l) => l.daily_price)) : null;
 }

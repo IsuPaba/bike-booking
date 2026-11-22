@@ -1,70 +1,43 @@
 /**
- * Availability rules — pure functions shared by the UI and the booking "database function".
- *
- * Units free = quantity owned − units in overlapping bookings that hold stock.
- * Holding statuses: confirmed, active, and pending_payment (only for 15 minutes after creation).
- * Overlap: existing.start < requested.end AND existing.end > requested.start.
+ * Availability rules (BRL-008) — pure functions shared by the UI and create_booking.
+ * For each day of a rental: units booked on active bookings + requested ≤ the listing's daily limit.
+ * Active = awaiting_payment (held for 15 minutes only), confirmed, with_tourist.
  */
-import type { Booking } from "./types";
+import { rentalDates } from "./pricing";
+import type { Booking, DateStr } from "./types";
 
 export const HOLD_MINUTES = 15;
-const HOLD_MS = HOLD_MINUTES * 60 * 1000;
+const HOLD_MS = HOLD_MINUTES * 60_000;
 
-type BookingLike = Pick<Booking, "id" | "status" | "created_at" | "start_at" | "end_at"> & {
-  items: { bike_id: string; quantity: number }[];
-};
+type BookingLike = Pick<Booking, "id" | "status" | "created_at" | "start_date" | "end_date"> & { items: { listing_id: string }[] };
 
-export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return new Date(aStart).getTime() < new Date(bEnd).getTime() && new Date(aEnd).getTime() > new Date(bStart).getTime();
-}
-
-/** When an unpaid booking's hold runs out. */
-export function holdExpiresAt(createdAt: string): Date {
-  return new Date(new Date(createdAt).getTime() + HOLD_MS);
-}
+export const holdExpiresAt = (createdAt: string) => new Date(new Date(createdAt).getTime() + HOLD_MS);
 
 export function holdsUnits(b: Pick<Booking, "status" | "created_at">, now: Date = new Date()): boolean {
-  if (b.status === "confirmed" || b.status === "active") return true;
-  if (b.status === "pending_payment") return holdExpiresAt(b.created_at).getTime() > now.getTime();
+  if (b.status === "confirmed" || b.status === "with_tourist") return true;
+  if (b.status === "awaiting_payment") return holdExpiresAt(b.created_at).getTime() > now.getTime();
   return false;
 }
 
-export function unitsBooked(
-  bikeId: string,
-  bookings: BookingLike[],
-  startIso: string,
-  endIso: string,
-  now: Date = new Date(),
-  excludeBookingId?: string,
-): number {
-  let total = 0;
+/** Units of a listing booked on one calendar day. */
+export function unitsBookedOn(listingId: string, day: DateStr, bookings: BookingLike[], now = new Date(), excludeId?: string): number {
+  let n = 0;
   for (const b of bookings) {
-    if (b.id === excludeBookingId || !holdsUnits(b, now) || !overlaps(b.start_at, b.end_at, startIso, endIso)) continue;
-    for (const item of b.items) if (item.bike_id === bikeId) total += item.quantity;
+    if (b.id === excludeId || !holdsUnits(b, now) || day < b.start_date || day > b.end_date) continue;
+    for (const i of b.items) if (i.listing_id === listingId) n++;
   }
-  return total;
+  return n;
 }
 
+/** listing_availability(): units free on the tightest day of the range. */
 export function unitsFree(
-  bike: { id: string; quantity_owned: number },
+  listing: { id: string; daily_limit: number },
+  start: DateStr,
+  end: DateStr,
   bookings: BookingLike[],
-  startIso: string,
-  endIso: string,
-  now: Date = new Date(),
+  now = new Date(),
+  excludeId?: string,
 ): number {
-  return Math.max(0, bike.quantity_owned - unitsBooked(bike.id, bookings, startIso, endIso, now));
-}
-
-export type PeriodError = { field: "start" | "end"; message: string };
-
-/** Friendly validation of a requested rental period. */
-export function validatePeriod(startIso: string | null, endIso: string | null, now: Date = new Date()): PeriodError | null {
-  if (!startIso) return { field: "start", message: "Choose a pick-up date and time." };
-  if (!endIso) return { field: "end", message: "Choose a return date and time." };
-  const s = new Date(startIso).getTime();
-  const e = new Date(endIso).getTime();
-  if (s < now.getTime() - 15 * 60 * 1000) return { field: "start", message: "Pick-up can't be in the past." };
-  if (e <= s) return { field: "end", message: "Return must be after pick-up." };
-  if (e - s < 60 * 60 * 1000) return { field: "end", message: "The minimum rental is 1 hour." };
-  return null;
+  const tightest = Math.max(0, ...rentalDates(start, end).map((d) => unitsBookedOn(listing.id, d, bookings, now, excludeId)));
+  return Math.max(0, listing.daily_limit - tightest);
 }

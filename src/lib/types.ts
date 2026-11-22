@@ -1,6 +1,40 @@
-/** Data model — mirrors the database tables described in the project brief. */
+/** Data model — mirrors the database tables in the SRS v0.1 prototype brief. */
 
-export interface BikeCategory {
+export type Iso = string; // ISO UTC instant
+export type DateStr = string; // "YYYY-MM-DD", Seychelles calendar date
+export type TimeStr = string; // "HH:mm", Seychelles wall clock
+
+export interface Settings {
+  brand_name: string;
+  tagline: string;
+  currency: string;
+  delivery_fee: number;
+  return_time: TimeStr;
+  free_cancellation_hours: number;
+  booking_min_notice_hours_pickup: number;
+  booking_min_notice_hours_delivery: number;
+  terms_text: string;
+  contact_phone: string;
+  whatsapp: string;
+  email: string;
+}
+
+export type CommissionType = "percentage" | "fixed_per_bike_day";
+
+export interface Vendor {
+  id: string;
+  business_name: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  location_text: string;
+  commission_type: CommissionType;
+  commission_value: number;
+  is_active: boolean;
+  notes: string;
+}
+
+export interface Category {
   id: string;
   name: string;
   slug: string;
@@ -8,126 +42,185 @@ export interface BikeCategory {
   sort_order: number;
 }
 
-export interface Bike {
+export interface Listing {
   id: string;
   name: string;
   slug: string;
   category_id: string;
+  bike_type: "standard" | "electric";
   short_description: string;
   description: string;
   features: string[];
-  frame_size: string;
   rider_height_min_cm: number;
   rider_height_max_cm: number;
-  gear_count: number;
-  has_basket: boolean;
-  is_electric: boolean;
-  quantity_owned: number;
-  hourly_rate: number;
-  daily_rate: number;
-  weekly_rate: number;
+  daily_price: number;
+  /** BRL-008: how many vendors can supply per day */
+  daily_limit: number;
   is_active: boolean;
   is_featured: boolean;
   sort_order: number;
 }
 
-export interface BikeImage {
+export interface ListingImage {
   id: string;
-  bike_id: string;
-  /** Public URL or data URL (uploads in the prototype are stored in the browser). */
+  listing_id: string;
   storage_path: string;
   is_primary: boolean;
   sort_order: number;
 }
 
-export type DiscountType = "percentage" | "fixed_amount";
-
-export interface Promotion {
+export interface Discount {
   id: string;
   name: string;
-  description: string;
-  discount_type: DiscountType;
-  discount_value: number;
-  /** Inclusive dates, YYYY-MM-DD in Seychelles time. */
-  starts_at: string;
-  ends_at: string;
-  applies_to: "all_bikes" | "selected_bikes";
-  /** null = applied automatically. */
-  promo_code: string | null;
-  min_rental_hours: number | null;
+  discount_type: "percentage" | "fixed_per_day";
+  value: number;
+  starts_on: DateStr;
+  ends_on: DateStr;
+  scope: "all" | "categories" | "listings";
+  /** discount_categories / discount_listings link tables, denormalised */
+  category_ids: string[];
+  listing_ids: string[];
   is_active: boolean;
-  /** promotion_bikes join, denormalised for the prototype. */
-  bike_ids: string[];
 }
 
-export type BookingStatus = "pending_payment" | "confirmed" | "active" | "completed" | "cancelled";
-export type PaymentMethod = "card" | "paypal" | "google_pay";
-export type PaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
+export interface PickupPoint {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  opens_at: TimeStr;
+  closes_at: TimeStr;
+  instructions: string;
+  is_active: boolean;
+}
+
+export interface Hotel {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  is_active: boolean;
+}
+
+export type BookingStatus = "awaiting_payment" | "confirmed" | "with_tourist" | "completed" | "cancelled" | "no_show";
+export type PaymentStatus = "unpaid" | "paid" | "cash_due" | "refunded";
+export type PaymentMethod = "card" | "google_pay" | "cash";
+export type Fulfilment = "pickup" | "delivery";
 
 export interface BookingItem {
   id: string;
   booking_id: string;
-  bike_id: string;
-  quantity: number;
-  price_breakdown: { lines: string[]; summary: string };
+  listing_id: string;
+  unit_price: number;
+  days: number;
+  discount_amount: number;
   line_total: number;
+  price_breakdown: { text: string };
+  vendor_id: string | null;
+  /** BRL-012: commission snapshot taken when the vendor is assigned */
+  commission_type: CommissionType | null;
+  commission_value: number | null;
+  commission_amount: number | null;
+  bicycle_number: string | null;
+  condition_notes: string | null;
 }
 
 export interface Booking {
   id: string;
   reference: string;
+  pin: string;
+  pin_attempts: number;
+  is_locked: boolean;
+  pin_verified_at: Iso | null;
   status: BookingStatus;
-  cancellation_requested: boolean;
+  payment_status: PaymentStatus;
+  payment_method: PaymentMethod;
   guest_name: string;
-  guest_email: string;
   guest_phone: string;
-  guest_country: string;
-  staying_at_hotel: boolean;
-  room_number: string | null;
-  /** ISO UTC instants */
-  start_at: string;
-  end_at: string;
-  pickup_note: string | null;
+  guest_email: string;
+  guest_passport: string;
+  hotel_id: string | null;
+  hotel_other_name: string | null;
+  room: string;
+  start_date: DateStr;
+  end_date: DateStr;
+  fulfilment: Fulfilment;
+  pickup_point_id: string | null;
+  time_needed: TimeStr;
   subtotal: number;
   discount_total: number;
+  delivery_fee: number;
   total: number;
-  currency: "USD";
-  promotion_id: string | null;
-  promo_code_used: string | null;
-  payment_method: PaymentMethod;
-  payment_status: PaymentStatus;
-  paid_at: string | null;
-  admin_notes: string | null;
-  created_at: string;
-  picked_up_at: string | null;
-  returned_at: string | null;
+  cash_collected_amount: number | null;
+  cancellation_reason: string | null;
+  internal_notes: string | null;
+  created_at: Iso;
+  handed_over_at: Iso | null;
+  returned_at: Iso | null;
+  /** One row per bicycle (a cart line of 3 bikes becomes 3 items, each with its own number at handover). */
   items: BookingItem[];
 }
 
-export interface Settings {
-  business_name: string;
-  phone: string;
-  whatsapp: string;
+export interface Payment {
+  id: string;
+  booking_id: string;
+  amount: number;
+  method: PaymentMethod;
+  status: "succeeded" | "failed" | "refunded";
+  provider_reference: string;
+  created_at: Iso;
+}
+
+export interface EmailOutbox {
+  id: string;
+  booking_id: string;
+  to_email: string;
+  subject: string;
+  body_html: string;
+  kind: "confirmation" | "receipt" | "cancellation" | "reminder";
+  created_at: Iso;
+}
+
+export interface AuditLog {
+  id: string;
+  actor_id: string;
+  action: string;
+  entity: string;
+  entity_id: string;
+  details: Record<string, unknown>;
+  created_at: Iso;
+}
+
+export type Role = "admin" | "handover_staff";
+
+export interface User {
+  id: string;
   email: string;
-  opening_hours: string;
-  pickup_location_text: string;
-  terms_text: string;
+  password: string; // prototype only
+  name: string;
 }
 
 export interface UserRole {
-  user_email: string;
-  role: "admin";
+  user_id: string;
+  role: Role;
 }
 
 export interface Database {
   version: number;
-  bike_categories: BikeCategory[];
-  bikes: Bike[];
-  bike_images: BikeImage[];
-  promotions: Promotion[];
-  bookings: Booking[];
   settings: Settings;
+  vendors: Vendor[];
+  categories: Category[];
+  listings: Listing[];
+  listing_images: ListingImage[];
+  discounts: Discount[];
+  pickup_points: PickupPoint[];
+  hotels: Hotel[];
+  bookings: Booking[];
+  payments: Payment[];
+  email_outbox: EmailOutbox[];
+  audit_log: AuditLog[];
+  users: User[];
   user_roles: UserRole[];
-  /** Simulated auth users (prototype only). */
-  users: { email: string; password: string }[];
 }
