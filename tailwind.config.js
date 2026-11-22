@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+const v = (name) => `rgb(var(--re-${name}) / <alpha-value>)`;
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -35,8 +35,8 @@ export default {
       },
       borderRadius: { "2xl": "1rem", "3xl": "1.5rem" },
       boxShadow: {
-        soft: "0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(var(--ink) / 0.18)",
-        lift: "0 2px 4px rgb(0 0 0 / 0.05), 0 18px 40px -16px rgb(var(--ink) / 0.28)",
+        soft: "0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(var(--re-ink) / 0.18)",
+        lift: "0 2px 4px rgb(0 0 0 / 0.05), 0 18px 40px -16px rgb(var(--re-ink) / 0.28)",
       },
       keyframes: {
         "fade-up": { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "none" } },

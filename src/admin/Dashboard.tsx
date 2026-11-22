@@ -41,11 +41,11 @@ function LineChart({ series }: { series: { date: string; count: number }[] }) {
           const i = Math.round(((((e.clientX - r.left) / r.width) * W - P.l) / (W - P.l - P.r)) * (series.length - 1));
           setHover(Math.max(0, Math.min(series.length - 1, i)));
         }}>
-        {[0, top / 2, top].map((t) => <g key={t}><line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="rgb(var(--border))" /><text x={P.l - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="rgb(var(--ink-soft))">{t}</text></g>)}
-        {[0, 15, series.length - 1].map((i) => <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : i === series.length - 1 ? "end" : "middle"} fontSize={11} fill="rgb(var(--ink-soft))">{formatDate(series[i].date).replace(/ \d{4}$/, "")}</text>)}
-        <path d={`${path} L${x(series.length - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill="rgb(var(--primary) / 0.08)" />
-        <path d={path} fill="none" stroke="rgb(var(--primary))" strokeWidth={2} strokeLinejoin="round" />
-        {h && hover !== null && <><line x1={x(hover)} x2={x(hover)} y1={P.t} y2={y(0)} stroke="rgb(var(--ink) / .3)" strokeDasharray="3 3" /><circle cx={x(hover)} cy={y(h.count)} r={5} fill="rgb(var(--primary))" stroke="rgb(var(--surface))" strokeWidth={2} /></>}
+        {[0, top / 2, top].map((t) => <g key={t}><line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="rgb(var(--re-border))" /><text x={P.l - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="rgb(var(--re-ink-soft))">{t}</text></g>)}
+        {[0, 15, series.length - 1].map((i) => <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : i === series.length - 1 ? "end" : "middle"} fontSize={11} fill="rgb(var(--re-ink-soft))">{formatDate(series[i].date).replace(/ \d{4}$/, "")}</text>)}
+        <path d={`${path} L${x(series.length - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill="rgb(var(--re-primary) / 0.08)" />
+        <path d={path} fill="none" stroke="rgb(var(--re-primary))" strokeWidth={2} strokeLinejoin="round" />
+        {h && hover !== null && <><line x1={x(hover)} x2={x(hover)} y1={P.t} y2={y(0)} stroke="rgb(var(--re-ink) / .3)" strokeDasharray="3 3" /><circle cx={x(hover)} cy={y(h.count)} r={5} fill="rgb(var(--re-primary))" stroke="rgb(var(--re-surface))" strokeWidth={2} /></>}
       </svg>
       {h && hover !== null && <div className="pointer-events-none absolute top-0 -translate-x-1/2 rounded-lg bg-island px-3 py-1.5 text-xs text-white" style={{ left: `${(x(hover) / W) * 100}%` }}><b>{h.count}</b> · {formatDate(h.date)}</div>}
       <table className="sr-only"><caption>Bookings per day</caption><tbody>{series.map((d) => <tr key={d.date}><td>{d.date}</td><td>{d.count}</td></tr>)}</tbody></table>

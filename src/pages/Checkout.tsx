@@ -221,7 +221,7 @@ function CheckoutForm({ refs }: { refs: { settings: Settings; pickups: PickupPoi
               </div>
               <div>
                 <label className="flex cursor-pointer items-start gap-3">
-                  <input type="checkbox" className="mt-1 h-5 w-5 accent-[rgb(var(--primary))]" {...register("agree")} aria-invalid={!!errors.agree} />
+                  <input type="checkbox" className="mt-1 h-5 w-5 accent-[rgb(var(--re-primary))]" {...register("agree")} aria-invalid={!!errors.agree} />
                   <span>I agree to the <Link to="/terms" target="_blank" className="link">rental terms</Link>.</span>
                 </label>
                 {errors.agree && <p className="field-error" role="alert">{errors.agree.message}</p>}

@@ -36,7 +36,7 @@ function Checklist({ items, value, onChange }: { items: { id: string; name: stri
     <div className="mt-2 grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-2">
       {items.map((x) => (
         <label key={x.id} className="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--primary))]" checked={value.includes(x.id)} onChange={(e) => onChange(e.target.checked ? [...value, x.id] : value.filter((y) => y !== x.id))} />{x.name}
+          <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--re-primary))]" checked={value.includes(x.id)} onChange={(e) => onChange(e.target.checked ? [...value, x.id] : value.filter((y) => y !== x.id))} />{x.name}
         </label>
       ))}
     </div>
@@ -72,7 +72,7 @@ function DiscountForm({ discount, categories, listings, onDone }: { discount?: D
         <legend className="field-label">Applies to</legend>
         <div className="flex flex-wrap gap-5">
           {([["all", "All bicycles"], ["categories", "Chosen categories"], ["listings", "Chosen bicycles"]] as const).map(([val, l]) => (
-            <label key={val} className="inline-flex items-center gap-2"><input type="radio" value={val} className="accent-[rgb(var(--primary))]" {...register("scope")} /> {l}</label>
+            <label key={val} className="inline-flex items-center gap-2"><input type="radio" value={val} className="accent-[rgb(var(--re-primary))]" {...register("scope")} /> {l}</label>
           ))}
         </div>
         {v.scope === "categories" && <Controller control={control} name="category_ids" render={({ field }) => <Checklist items={categories} value={field.value} onChange={field.onChange} />} />}

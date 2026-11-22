@@ -7,7 +7,7 @@ import { buttonClass } from "./ui";
 // Simple coloured dot instead of Leaflet's default image marker (no asset paths needed)
 const dot = L.divIcon({
   className: "",
-  html: '<span style="display:block;width:22px;height:22px;border-radius:50%;background:rgb(var(--cta));border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)"></span>',
+  html: '<span style="display:block;width:22px;height:22px;border-radius:50%;background:rgb(var(--re-cta));border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)"></span>',
   iconSize: [22, 22],
   iconAnchor: [11, 11],
 });

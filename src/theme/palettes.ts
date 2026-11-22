@@ -162,22 +162,22 @@ export const DEFAULT_PALETTE: PaletteId = "coastal";
 const STORAGE_KEY = "rideeasy-palette";
 
 const CSS_VAR: Record<keyof PaletteTokens, string> = {
-  bg: "--bg",
-  surface: "--surface",
-  border: "--border",
-  ink: "--ink",
-  inkSoft: "--ink-soft",
-  primary: "--primary",
-  cta: "--cta",
-  ctaInk: "--cta-ink",
-  ride: "--ride",
-  tint: "--tint",
-  dark: "--dark",
-  onDarkAccent: "--on-dark-accent",
-  accent: "--accent",
-  heroFrom: "--hero-from",
-  heroVia: "--hero-via",
-  heroTo: "--hero-to",
+  bg: "--re-bg",
+  surface: "--re-surface",
+  border: "--re-border",
+  ink: "--re-ink",
+  inkSoft: "--re-ink-soft",
+  primary: "--re-primary",
+  cta: "--re-cta",
+  ctaInk: "--re-cta-ink",
+  ride: "--re-ride",
+  tint: "--re-tint",
+  dark: "--re-dark",
+  onDarkAccent: "--re-on-dark-accent",
+  accent: "--re-accent",
+  heroFrom: "--re-hero-from",
+  heroVia: "--re-hero-via",
+  heroTo: "--re-hero-to",
 };
 
 /** "#0B7F82" → "11 127 130" so Tailwind can apply opacity modifiers. */

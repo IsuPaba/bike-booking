@@ -6,17 +6,17 @@
   /* Fallback colours (Coastal Ride) so the page is never colourless if the
      palette script hasn't run yet. src/theme/palettes.ts overrides these. */
   :root {
-    --bg: 251 248 242; --surface: 255 255 255; --border: 234 223 207;
-    --ink: 11 60 93; --ink-soft: 79 102 119; --primary: 11 127 130;
-    --cta: 244 160 36; --cta-ink: 11 60 93; --ride: 168 209 79; --tint: 221 242 240;
-    --dark: 11 60 93; --on-dark-accent: 127 224 218; --accent: 46 196 192;
-    --hero-from: 11 60 93; --hero-via: 11 127 130; --hero-to: 46 196 192;
+    --re-bg: 251 248 242; --re-surface: 255 255 255; --re-border: 234 223 207;
+    --re-ink: 11 60 93; --re-ink-soft: 79 102 119; --re-primary: 11 127 130;
+    --re-cta: 244 160 36; --re-cta-ink: 11 60 93; --re-ride: 168 209 79; --re-tint: 221 242 240;
+    --re-dark: 11 60 93; --re-on-dark-accent: 127 224 218; --re-accent: 46 196 192;
+    --re-hero-from: 11 60 93; --re-hero-via: 11 127 130; --re-hero-to: 46 196 192;
   }
   html { @apply bg-bg text-ink antialiased; scroll-behavior: smooth; }
   body { @apply bg-bg font-sans text-ink; transition: background-color .25s ease, color .25s ease; }
   :focus-visible { @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-bg; }
   input, select, textarea { @apply text-ink; }
-  ::selection { background: rgb(var(--ride) / .6); color: rgb(var(--ink)); }
+  ::selection { background: rgb(var(--re-ride) / .6); color: rgb(var(--re-ink)); }
 }
 
 @layer components {
@@ -30,7 +30,7 @@
   .link { @apply font-medium text-primary underline-offset-4 hover:underline; }
   .skeleton { @apply relative overflow-hidden rounded-xl bg-line/60; }
   .skeleton::after { content: ""; @apply absolute inset-0 -translate-x-full animate-[shimmer_1.4s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent; }
-  .hero-gradient { background: linear-gradient(160deg, rgb(var(--hero-from)) 0%, rgb(var(--hero-via)) 55%, rgb(var(--hero-to)) 100%); }
+  .hero-gradient { background: linear-gradient(160deg, rgb(var(--re-hero-from)) 0%, rgb(var(--re-hero-via)) 55%, rgb(var(--re-hero-to)) 100%); }
 }
 
 @media (prefers-reduced-motion: reduce) {

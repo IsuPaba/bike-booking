@@ -38,7 +38,7 @@ function UserForm({ user, onDone }: { user: Editing; onDone: () => void }) {
       <fieldset>
         <legend className="field-label">Role</legend>
         {(["admin", "handover_staff"] as const).map((r) => (
-          <label key={r} className="mr-6 inline-flex items-center gap-2"><input type="radio" className="accent-[rgb(var(--primary))]" checked={u.role === r} onChange={() => setU({ ...u, role: r })} /> {ROLE_LABEL[r]}</label>
+          <label key={r} className="mr-6 inline-flex items-center gap-2"><input type="radio" className="accent-[rgb(var(--re-primary))]" checked={u.role === r} onChange={() => setU({ ...u, role: r })} /> {ROLE_LABEL[r]}</label>
         ))}
         <p className="mt-1 text-sm text-ink-soft">Handover staff only see the /staff app: today's handovers and returns.</p>
       </fieldset>
